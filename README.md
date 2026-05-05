@@ -1,6 +1,6 @@
 # Sideband iOS SDK
 
-Sideband helps iOS apps collect lightweight in-app feedback pulses and send simple product events to Sideband.
+Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband.
 
 ## Requirements
 
@@ -48,10 +48,9 @@ Client.track(
 	event: "session_started",
 	metadata: ["source": "home"]
 )
-
 ```
 
-`tagUser`, `track`, and `flush` are fire-and-forget calls. They do not require `Task {}` or `await`.
+`tagUser` and `track` are fire-and-forget calls. They do not require `Task {}` or `await`.
 
 ## SwiftUI Pulse Overlay
 
@@ -64,7 +63,7 @@ WindowGroup {
 }
 ```
 
-The overlay presents feedback pulses when Sideband returns one from sync.
+The overlay presents feedback pulses when Sideband has one available for the current user and app context.
 
 ### Customize The FAB
 
@@ -120,7 +119,40 @@ Client.tagUser("user-123")
 Client.track(event: "checkout_started")
 ```
 
-The built-in pulse UI is currently exposed as a SwiftUI overlay. A first-class UIKit pulse controller is planned.
+Install the built-in pulse overlay after your scene has a visible window:
+
+```swift
+import Sideband
+import UIKit
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+	var window: UIWindow?
+	private var pulseOverlayInstallation: SidebandPulseOverlayInstallation?
+
+	func scene(
+		_ scene: UIScene,
+		willConnectTo _: UISceneSession,
+		options _: UIScene.ConnectionOptions
+	) {
+		guard let windowScene = scene as? UIWindowScene else { return }
+
+		let window = UIWindow(windowScene: windowScene)
+		window.rootViewController = UIViewController()
+		self.window = window
+		window.makeKeyAndVisible()
+
+		Client.configure(apiKey: "YOUR_API_KEY")
+		pulseOverlayInstallation = Client.installPulseOverlay(in: windowScene)
+	}
+
+	func sceneDidDisconnect(_: UIScene) {
+		pulseOverlayInstallation?.uninstall()
+		pulseOverlayInstallation = nil
+	}
+}
+```
+
+If you are installing from a view controller that is already attached to a window, use `Client.installPulseOverlay(on:)`.
 
 ## API Reference
 
@@ -140,13 +172,24 @@ Client.configure(
 )
 ```
 
+You can also manage a client instance yourself instead of using the shared client:
+
+```swift
+let client = Client(
+	configuration: Configuration(apiKey: "YOUR_API_KEY")
+)
+
+client.tagUser("user-123")
+client.track(event: "button_tapped")
+```
+
 ### Tag A User
 
 ```swift
 Client.tagUser("user-123")
 ```
 
-Use a stable host-app user identifier. Calling this updates sync context and requests a background sync.
+Use a stable host-app user identifier. Calling this updates the current user context and schedules delivery in the background.
 
 ### Track An Event
 
