@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
 	s.name = "Sideband"
-	s.version = "1.1.0-beta.1"
+	s.version = "1.1.0-beta.3"
 	s.summary = "Sideband iOS SDK"
 	s.description = "Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband."
 	s.homepage = "https://github.com/SidebandAI/sideband-ios"
