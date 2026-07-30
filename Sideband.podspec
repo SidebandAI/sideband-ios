@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
 	s.name = "Sideband"
-	s.version = "1.2.0-beta.2"
+	s.version = "1.2.0"
 	s.summary = "Sideband iOS SDK"
 	s.description = "Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband."
 	s.homepage = "https://github.com/SidebandAI/sideband-ios"
@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
 	s.swift_versions = ["6.2"]
 	s.source = {
 		:git => "git@github.com:SidebandAI/sideband-ios.git",
-		:tag => "1.2.0-beta.2",
+		:tag => "1.2.0",
 	}
 	s.prepare_command = "unzip -q -o Sideband.xcframework.zip"
 	s.vendored_frameworks = "Sideband.xcframework"
