@@ -134,6 +134,72 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 If you are installing from a view controller that is already attached to a window, use `Client.installPulseOverlay(on:)`.
 
+## Google Tag Manager
+
+HTML-wrapper apps that load content in a `WKWebView` can forward Google Tag Manager events to Sideband through the `SidebandWebView` bridge.
+
+Add the bridge alongside the core SDK:
+
+- Swift Package Manager: add the `SidebandWebView` product to the app target.
+- CocoaPods: use `pod "Sideband/WebView"`, which includes the core SDK.
+
+### 1. Install The Bridge
+
+Install the bridge after configuring Sideband and before the WebView's first `load`.
+Pulses continue to appear in the native overlay above the WebView.
+
+```swift
+import Sideband
+import SidebandWebView
+
+Client.configure(apiKey: "YOUR_API_KEY")
+Client.installWebViewBridge(on: webView)
+Client.installPulseOverlay(on: viewController)
+```
+
+### 2. Forward GTM Events
+
+In Google Tag Manager, create a Custom HTML tag triggered by All Custom Events,
+or only by the events Sideband should receive. Skip GTM's built-in `gtm.*` events.
+
+```html
+<script>
+  (function () {
+    var name = {{Event}};
+    if (!name || String(name).indexOf('gtm.') === 0) return;
+    if (window.Sideband) window.Sideband.track(name);
+  })();
+</script>
+```
+
+To include event properties, create GTM Data Layer variables and pass them as the second argument. Metadata values are sent to Sideband as strings.
+
+```html
+<script>
+  if (window.Sideband) {
+    window.Sideband.track('{{Event}}', {
+      value: '{{Value}}'
+    });
+  }
+</script>
+```
+
+### 3. Tag The User
+
+Create a Custom HTML tag that runs on login, or on container load when a stable user ID is available:
+
+```html
+<script>
+  if (window.Sideband && '{{User ID}}') {
+    window.Sideband.tagUser('{{User ID}}');
+  }
+</script>
+```
+
+On logout, call `Client.untagUser()` from native code or `window.Sideband.untagUser()` from a GTM tag.
+
+`{{Event}}` is GTM's built-in Event variable. `{{Value}}` and `{{User ID}}` are Data Layer variables supplied by the host app.
+
 ## API Reference
 
 ### Configure
