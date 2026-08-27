@@ -65,26 +65,6 @@ WindowGroup {
 
 The overlay presents feedback pulses when Sideband has one available for the current user and app context.
 
-### Customize The FAB
-
-When a pulse is configured to start as a floating action button, pass a `SidebandFABStyle` to customize the built-in trigger:
-
-```swift
-WindowGroup {
-	ContentView()
-		.sidebandPulseOverlay(
-			using: Client.shared,
-			fabStyle: SidebandFABStyle(
-				icon: Image(systemName: "clock.badge.questionmark.fill"),
-				foregroundColor: .white,
-				backgroundColor: .black
-			)
-		)
-}
-```
-
-`SidebandFABStyle` supports an optional SwiftUI `Image`, a foreground color for the label, countdown ring, and default glyph, and a background color for the expanded capsule and condensed circle. The FAB title and timing still come from Sideband; `fabStyle` only controls the visual styling.
-
 ## Presentation Gating
 
 Use a delegate when you need to decide whether a pulse should appear now:
