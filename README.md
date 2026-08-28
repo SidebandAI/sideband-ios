@@ -7,7 +7,7 @@ Sideband helps iOS apps collect lightweight in-app feedback pulses and send prod
 ### Requirements
 
 - iOS 15+
-- Swift Package Manager
+- Swift Package Manager or CocoaPods
 - A Sideband API key
 
 ### Install
@@ -18,7 +18,13 @@ In Xcode, add this package URL:
 https://github.com/SidebandAI/sideband-ios
 ```
 
-Then add the `Sideband` product to your app target.
+Select the exact version `1.2.1`, then add the `Sideband` product to your app target.
+
+With CocoaPods, add the same release to your `Podfile`:
+
+```ruby
+pod "Sideband", "1.2.1"
+```
 
 ### Configure
 
