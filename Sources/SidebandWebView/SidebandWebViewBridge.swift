@@ -42,7 +42,7 @@
 		case invalidAllowedOrigin(String)
 	}
 
-	public extension Client {
+	extension Client {
 		/// Installs a JavaScript bridge that forwards `window.Sideband` calls from a `WKWebView` into this client.
 		///
 		/// Call this before the WebView's first `load` so the bridge is present when Google Tag Manager starts. If the
@@ -61,7 +61,7 @@
 		/// - Throws: `SidebandWebViewBridgeError` when no valid allowed origins are supplied.
 		@discardableResult
 		@MainActor
-		func installWebViewBridge(
+		public func installWebViewBridge(
 			on webView: WKWebView,
 			allowedOrigins: [String]
 		) throws -> SidebandWebViewBridgeInstallation {
@@ -92,7 +92,7 @@
 		/// - Throws: `SidebandWebViewBridgeError` when no valid allowed origins are supplied.
 		@discardableResult
 		@MainActor
-		static func installWebViewBridge(
+		public static func installWebViewBridge(
 			on webView: WKWebView,
 			allowedOrigins: [String]
 		) throws -> SidebandWebViewBridgeInstallation? {
@@ -140,19 +140,19 @@
 
 		init?(allowedOrigin value: String) {
 			guard value == value.trimmingCharacters(in: .whitespacesAndNewlines),
-			      let components = URLComponents(string: value),
-			      Self.hasValidAuthority(value, components: components),
-			      let scheme = components.scheme?.lowercased(),
-			      Self.allowedSchemes.contains(scheme),
-			      let parsedHost = components.host,
-			      let host = (parsedHost.hasPrefix("[") ? parsedHost : components.url?.host)?.lowercased(),
-			      !host.isEmpty,
-			      !host.contains("*"),
-			      components.user == nil,
-			      components.password == nil,
-			      components.path.isEmpty || components.path == "/",
-			      components.query == nil,
-			      components.fragment == nil
+				let components = URLComponents(string: value),
+				Self.hasValidAuthority(value, components: components),
+				let scheme = components.scheme?.lowercased(),
+				Self.allowedSchemes.contains(scheme),
+				let parsedHost = components.host,
+				let host = (parsedHost.hasPrefix("[") ? parsedHost : components.url?.host)?.lowercased(),
+				!host.isEmpty,
+				!host.contains("*"),
+				components.user == nil,
+				components.password == nil,
+				components.path.isEmpty || components.path == "/",
+				components.query == nil,
+				components.fragment == nil
 			else {
 				return nil
 			}
@@ -168,7 +168,7 @@
 			guard
 				Self.allowedSchemes.contains(scheme),
 				!host.isEmpty,
-				port == 0 || (1 ... 65535).contains(port)
+				port == 0 || (1...65535).contains(port)
 			else {
 				return nil
 			}
@@ -189,7 +189,7 @@
 			guard !authority.isEmpty, !authority.contains(where: { "/?#\\".contains($0) }) else { return false }
 			guard hasValidHostAndPort(authority) else { return false }
 			guard let port = components.port else { return true }
-			return (1 ... 65535).contains(port)
+			return (1...65535).contains(port)
 		}
 
 		private static func hasValidHostAndPort(_ authority: String) -> Bool {
@@ -208,10 +208,10 @@
 		}
 
 		private static func isValidPortText(_ value: Substring) -> Bool {
-			guard !value.isEmpty, value.utf8.allSatisfy({ (48 ... 57).contains($0) }), let port = Int(value) else {
+			guard !value.isEmpty, value.utf8.allSatisfy({ (48...57).contains($0) }), let port = Int(value) else {
 				return false
 			}
-			return (1 ... 65535).contains(port)
+			return (1...65535).contains(port)
 		}
 
 		private static func defaultPort(for scheme: String) -> Int {
@@ -314,11 +314,13 @@
 		) -> Bool {
 			guard messageName == Self.handlerName else { return false }
 			guard isMainFrame else { return false }
-			guard let origin = WebViewBridgeOrigin(
-				sourceProtocol: sourceOrigin.protocol,
-				host: sourceOrigin.host,
-				port: sourceOrigin.port
-			) else { return false }
+			guard
+				let origin = WebViewBridgeOrigin(
+					sourceProtocol: sourceOrigin.protocol,
+					host: sourceOrigin.host,
+					port: sourceOrigin.port
+				)
+			else { return false }
 			guard allowedOrigins.contains(origin) else { return false }
 			guard let action = WebViewBridgeMessage.parse(body) else { return false }
 			guard let client = clientTarget.client else { return false }
@@ -366,11 +368,11 @@
 
 		private func apply(_ action: WebViewBridgeAction, to client: Client) {
 			switch action {
-			case let .tagUser(userID):
+			case .tagUser(let userID):
 				client.tagUser(userID)
 			case .untagUser:
 				client.untagUser()
-			case let .track(name, metadata):
+			case .track(let name, let metadata):
 				client.track(event: name, metadata: metadata)
 			}
 		}
@@ -383,7 +385,7 @@
 
 		var client: Client? {
 			switch self {
-			case let .instance(reference):
+			case .instance(let reference):
 				reference.client
 			case .shared:
 				Client.shared
@@ -398,7 +400,7 @@
 		}
 
 		func matches(_ client: Client) -> Bool {
-			if case let .instance(reference) = self {
+			if case .instance(let reference) = self {
 				return reference.client === client
 			}
 			return false
