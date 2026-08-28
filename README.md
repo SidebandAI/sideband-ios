@@ -18,12 +18,12 @@ In Xcode, add this package URL:
 https://github.com/SidebandAI/sideband-ios
 ```
 
-Select the exact version `1.2.1`, then add the `Sideband` product to your app target.
+Then add the `Sideband` product to your app target.
 
 With CocoaPods, add the same release to your `Podfile`:
 
 ```ruby
-pod "Sideband", "1.2.1"
+pod "Sideband"
 ```
 
 ### Configure
