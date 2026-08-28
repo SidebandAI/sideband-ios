@@ -34,7 +34,15 @@
 		}
 	}
 
-	extension Client {
+	/// Errors that prevent the WebView bridge from being installed securely.
+	public enum SidebandWebViewBridgeError: Error, Equatable, Sendable {
+		/// At least one allowed origin is required.
+		case allowedOriginsRequired
+		/// An allowed origin was not an exact HTTP or HTTPS origin.
+		case invalidAllowedOrigin(String)
+	}
+
+	public extension Client {
 		/// Installs a JavaScript bridge that forwards `window.Sideband` calls from a `WKWebView` into this client.
 		///
 		/// Call this before the WebView's first `load` so the bridge is present when Google Tag Manager starts. If the
@@ -43,17 +51,29 @@
 		/// The returned handle can be used to remove the script message handler during teardown. The bridge retains the
 		/// installation, so host apps do not need to retain the handle just to keep the bridge active.
 		///
-		/// - Parameter webView: Host `WKWebView` that loads the HTML wrapper.
+		/// Allowed origins must include an `http` or `https` scheme and host, may include a port, and must not include
+		/// credentials, a non-root path, query, fragment, or wildcard.
+		///
+		/// - Parameters:
+		///   - webView: Host `WKWebView` that loads the HTML wrapper.
+		///   - allowedOrigins: Exact origins permitted to send bridge messages, such as `https://app.example.com`.
 		/// - Returns: Bridge installation handle.
+		/// - Throws: `SidebandWebViewBridgeError` when no valid allowed origins are supplied.
 		@discardableResult
 		@MainActor
-		public func installWebViewBridge(on webView: WKWebView) -> SidebandWebViewBridgeInstallation {
+		func installWebViewBridge(
+			on webView: WKWebView,
+			allowedOrigins: [String]
+		) throws -> SidebandWebViewBridgeInstallation {
+			let allowedOrigins = try WebViewBridgeOrigin.validate(allowedOrigins)
 			let webViewIdentifier = ObjectIdentifier(webView)
-			if let existingInstallation = WebViewBridgeStore.installations[webViewIdentifier], existingInstallation.isInstalled {
+			let existingInstallation = WebViewBridgeStore.installations[webViewIdentifier]
+			if let existingInstallation, existingInstallation.matches(client: self, allowedOrigins: allowedOrigins) {
 				return existingInstallation.handle
 			}
 
-			let installation = WebViewBridgeInstallation(webView: webView, client: self)
+			WebViewBridgeStore.installations[webViewIdentifier]?.uninstall()
+			let installation = WebViewBridgeInstallation(webView: webView, client: self, allowedOrigins: allowedOrigins)
 			WebViewBridgeStore.installations[webViewIdentifier] = installation
 			return installation.handle
 		}
@@ -62,17 +82,140 @@
 		///
 		/// Call `configure(...)` before installing the bridge, and call this before the WebView's first `load`.
 		///
-		/// - Parameter webView: Host `WKWebView` that loads the HTML wrapper.
+		/// Allowed origins must include an `http` or `https` scheme and host, may include a port, and must not include
+		/// credentials, a non-root path, query, fragment, or wildcard.
+		///
+		/// - Parameters:
+		///   - webView: Host `WKWebView` that loads the HTML wrapper.
+		///   - allowedOrigins: Exact origins permitted to send bridge messages, such as `https://app.example.com`.
 		/// - Returns: Bridge installation handle, or `nil` if the shared client has not been configured.
+		/// - Throws: `SidebandWebViewBridgeError` when no valid allowed origins are supplied.
 		@discardableResult
 		@MainActor
-		public static func installWebViewBridge(on webView: WKWebView) -> SidebandWebViewBridgeInstallation? {
-			guard let client = Client.shared else {
-				NSLog("[Sideband] ERROR: %@", "Client.installWebViewBridge(on:) called before Client.configure(...).")
+		static func installWebViewBridge(
+			on webView: WKWebView,
+			allowedOrigins: [String]
+		) throws -> SidebandWebViewBridgeInstallation? {
+			let allowedOrigins = try WebViewBridgeOrigin.validate(allowedOrigins)
+			guard Client.shared != nil else {
+				NSLog(
+					"[Sideband] ERROR: %@",
+					"Client.installWebViewBridge(on:allowedOrigins:) called before Client.configure(...)."
+				)
 				return nil
 			}
 
-			return client.installWebViewBridge(on: webView)
+			let webViewIdentifier = ObjectIdentifier(webView)
+			let existingInstallation = WebViewBridgeStore.installations[webViewIdentifier]
+			if let existingInstallation, existingInstallation.matchesShared(allowedOrigins: allowedOrigins) {
+				return existingInstallation.handle
+			}
+
+			WebViewBridgeStore.installations[webViewIdentifier]?.uninstall()
+			let installation = WebViewBridgeInstallation(webView: webView, allowedOrigins: allowedOrigins)
+			WebViewBridgeStore.installations[webViewIdentifier] = installation
+			return installation.handle
+		}
+	}
+
+	private struct WebViewBridgeOrigin: Hashable {
+		let scheme: String
+		let host: String
+		let port: Int
+
+		static func validate(_ values: [String]) throws -> Set<Self> {
+			guard !values.isEmpty else {
+				throw SidebandWebViewBridgeError.allowedOriginsRequired
+			}
+
+			return try Set(
+				values.map { value in
+					guard let origin = Self(allowedOrigin: value) else {
+						throw SidebandWebViewBridgeError.invalidAllowedOrigin(value)
+					}
+					return origin
+				}
+			)
+		}
+
+		init?(allowedOrigin value: String) {
+			guard value == value.trimmingCharacters(in: .whitespacesAndNewlines),
+			      let components = URLComponents(string: value),
+			      Self.hasValidAuthority(value, components: components),
+			      let scheme = components.scheme?.lowercased(),
+			      Self.allowedSchemes.contains(scheme),
+			      let parsedHost = components.host,
+			      let host = (parsedHost.hasPrefix("[") ? parsedHost : components.url?.host)?.lowercased(),
+			      !host.isEmpty,
+			      !host.contains("*"),
+			      components.user == nil,
+			      components.password == nil,
+			      components.path.isEmpty || components.path == "/",
+			      components.query == nil,
+			      components.fragment == nil
+			else {
+				return nil
+			}
+
+			self.scheme = scheme
+			self.host = host
+			port = components.port ?? Self.defaultPort(for: scheme)
+		}
+
+		init?(sourceProtocol: String, host: String, port: Int) {
+			let scheme = sourceProtocol.lowercased()
+			let host = host.lowercased()
+			guard
+				Self.allowedSchemes.contains(scheme),
+				!host.isEmpty,
+				port == 0 || (1 ... 65535).contains(port)
+			else {
+				return nil
+			}
+
+			self.scheme = scheme
+			self.host = host
+			self.port = port == 0 ? Self.defaultPort(for: scheme) : port
+		}
+
+		private static let allowedSchemes: Set<String> = ["http", "https"]
+
+		private static func hasValidAuthority(_ value: String, components: URLComponents) -> Bool {
+			guard let separator = value.range(of: "://") else { return false }
+			var authority = String(value[separator.upperBound...])
+			if authority.hasSuffix("/") {
+				authority.removeLast()
+			}
+			guard !authority.isEmpty, !authority.contains(where: { "/?#\\".contains($0) }) else { return false }
+			guard hasValidHostAndPort(authority) else { return false }
+			guard let port = components.port else { return true }
+			return (1 ... 65535).contains(port)
+		}
+
+		private static func hasValidHostAndPort(_ authority: String) -> Bool {
+			if authority.hasPrefix("[") {
+				guard let closingBracket = authority.firstIndex(of: "]") else { return false }
+				let remainder = authority[authority.index(after: closingBracket)...]
+				guard !remainder.isEmpty else { return true }
+				guard remainder.hasPrefix(":") else { return false }
+				return isValidPortText(remainder.dropFirst())
+			}
+
+			let parts = authority.split(separator: ":", omittingEmptySubsequences: false)
+			guard parts.count <= 2, parts.first?.isEmpty == false else { return false }
+			guard parts.count == 2 else { return true }
+			return isValidPortText(parts[1])
+		}
+
+		private static func isValidPortText(_ value: Substring) -> Bool {
+			guard !value.isEmpty, value.utf8.allSatisfy({ (48 ... 57).contains($0) }), let port = Int(value) else {
+				return false
+			}
+			return (1 ... 65535).contains(port)
+		}
+
+		private static func defaultPort(for scheme: String) -> Int {
+			scheme == "https" ? 443 : 80
 		}
 	}
 
@@ -118,7 +261,8 @@
 		}
 
 		let webViewIdentifier: ObjectIdentifier
-		private weak var client: Client?
+		private let allowedOrigins: Set<WebViewBridgeOrigin>
+		private let clientTarget: WebViewBridgeClientTarget
 		private weak var webView: WKWebView?
 		private let handler: WeakWebViewBridgeScriptMessageHandler
 		private var isUninstalled = false
@@ -128,23 +272,66 @@
 		}
 
 		var isInstalled: Bool {
-			!isUninstalled && webView != nil && client != nil
+			!isUninstalled && webView != nil && clientTarget.client != nil
 		}
 
-		init(webView: WKWebView, client: Client) {
+		fileprivate init(webView: WKWebView, client: Client, allowedOrigins: Set<WebViewBridgeOrigin>) {
 			webViewIdentifier = ObjectIdentifier(webView)
 			self.webView = webView
-			self.client = client
+			self.allowedOrigins = allowedOrigins
+			clientTarget = .instance(WeakClientReference(client))
+			handler = WeakWebViewBridgeScriptMessageHandler()
+			handler.installation = self
+			install(on: webView)
+		}
+
+		fileprivate init(webView: WKWebView, allowedOrigins: Set<WebViewBridgeOrigin>) {
+			webViewIdentifier = ObjectIdentifier(webView)
+			self.webView = webView
+			self.allowedOrigins = allowedOrigins
+			clientTarget = .shared
 			handler = WeakWebViewBridgeScriptMessageHandler()
 			handler.installation = self
 			install(on: webView)
 		}
 
 		func handle(_ message: WKScriptMessage) {
-			guard message.name == Self.handlerName else { return }
-			guard message.frameInfo.isMainFrame else { return }
-			guard let action = WebViewBridgeMessage.parse(message.body) else { return }
-			apply(action)
+			let securityOrigin = message.frameInfo.securityOrigin
+			handle(
+				messageName: message.name,
+				isMainFrame: message.frameInfo.isMainFrame,
+				sourceOrigin: (securityOrigin.protocol, securityOrigin.host, securityOrigin.port),
+				body: message.body
+			)
+		}
+
+		@discardableResult
+		func handle(
+			messageName: String,
+			isMainFrame: Bool,
+			sourceOrigin: (protocol: String, host: String, port: Int),
+			body: Any
+		) -> Bool {
+			guard messageName == Self.handlerName else { return false }
+			guard isMainFrame else { return false }
+			guard let origin = WebViewBridgeOrigin(
+				sourceProtocol: sourceOrigin.protocol,
+				host: sourceOrigin.host,
+				port: sourceOrigin.port
+			) else { return false }
+			guard allowedOrigins.contains(origin) else { return false }
+			guard let action = WebViewBridgeMessage.parse(body) else { return false }
+			guard let client = clientTarget.client else { return false }
+			apply(action, to: client)
+			return true
+		}
+
+		fileprivate func matches(client: Client, allowedOrigins: Set<WebViewBridgeOrigin>) -> Bool {
+			isInstalled && self.allowedOrigins == allowedOrigins && clientTarget.matches(client)
+		}
+
+		fileprivate func matchesShared(allowedOrigins: Set<WebViewBridgeOrigin>) -> Bool {
+			isInstalled && self.allowedOrigins == allowedOrigins && clientTarget.isShared
 		}
 
 		func uninstall() {
@@ -155,7 +342,6 @@
 				contentWorld: .page
 			)
 			WebViewBridgeStore.installations[webViewIdentifier] = nil
-			client = nil
 			webView = nil
 		}
 
@@ -175,18 +361,56 @@
 				)
 			}
 
-			webView.evaluateJavaScript(Self.javaScriptSource, in: nil, in: .page) { _, _ in }
+			webView.evaluateJavaScript(Self.javaScriptSource, in: nil, in: .page) { _ in }
 		}
 
-		private func apply(_ action: WebViewBridgeAction) {
+		private func apply(_ action: WebViewBridgeAction, to client: Client) {
 			switch action {
-			case .tagUser(let userID):
-				client?.tagUser(userID)
+			case let .tagUser(userID):
+				client.tagUser(userID)
 			case .untagUser:
-				client?.untagUser()
-			case .track(let name, let metadata):
-				client?.track(event: name, metadata: metadata)
+				client.untagUser()
+			case let .track(name, metadata):
+				client.track(event: name, metadata: metadata)
 			}
+		}
+	}
+
+	@MainActor
+	private enum WebViewBridgeClientTarget {
+		case instance(WeakClientReference)
+		case shared
+
+		var client: Client? {
+			switch self {
+			case let .instance(reference):
+				reference.client
+			case .shared:
+				Client.shared
+			}
+		}
+
+		var isShared: Bool {
+			if case .shared = self {
+				return true
+			}
+			return false
+		}
+
+		func matches(_ client: Client) -> Bool {
+			if case let .instance(reference) = self {
+				return reference.client === client
+			}
+			return false
+		}
+	}
+
+	@MainActor
+	private final class WeakClientReference {
+		weak var client: Client?
+
+		init(_ client: Client) {
+			self.client = client
 		}
 	}
 

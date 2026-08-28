@@ -2,13 +2,15 @@
 
 Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband.
 
-## Requirements
+## Get Started
+
+### Requirements
 
 - iOS 15+
 - Swift Package Manager
 - A Sideband API key
 
-## Installation
+### Install
 
 In Xcode, add this package URL:
 
@@ -18,7 +20,7 @@ https://github.com/SidebandAI/sideband-ios
 
 Then add the `Sideband` product to your app target.
 
-## Quick Start
+### Configure
 
 Configure Sideband once during app startup:
 
@@ -39,22 +41,33 @@ struct MyApp: App {
 }
 ```
 
-Then call Sideband from anywhere in your app:
+For more control over the app context, pass a `Configuration`:
 
 ```swift
-Client.tagUser("user-123")
-
-Client.track(
-	event: "session_started",
-	metadata: ["source": "home"]
+Client.configure(
+	configuration: Configuration(
+		apiKey: "YOUR_API_KEY",
+		appVersion: "1.0.0"
+	)
 )
 ```
 
-`tagUser` and `track` are fire-and-forget calls. They do not require `Task {}` or `await`.
+You can also manage a client instance instead of using the shared client:
 
-## SwiftUI Pulse Overlay
+```swift
+let client = Client(
+	configuration: Configuration(apiKey: "YOUR_API_KEY")
+)
 
-Attach the built-in pulse overlay near the root of your SwiftUI app:
+client.tagUser("user-123")
+client.track(event: "button_tapped")
+```
+
+### Present Pulses
+
+#### SwiftUI
+
+Attach the built-in pulse overlay near the root of your app:
 
 ```swift
 WindowGroup {
@@ -65,39 +78,7 @@ WindowGroup {
 
 The overlay presents feedback pulses when Sideband has one available for the current user and app context.
 
-## Presentation Gating
-
-Use a delegate when you need to decide whether a pulse should appear now:
-
-```swift
-final class PulseGate: ClientDelegate {
-	@MainActor
-	func clientShouldPresentPulse(_ pulse: PendingPulse) async -> PulsePresentationDecision {
-		.showNow
-	}
-}
-```
-
-Configure Sideband with the delegate:
-
-```swift
-Client.configure(
-	apiKey: "YOUR_API_KEY",
-	delegate: PulseGate()
-)
-```
-
-Return `.showNow` to present immediately, `.notNow` to skip this opportunity, or `.never` to decline the pulse permanently.
-
-## UIKit Apps
-
-UIKit apps can use the shared host API directly:
-
-```swift
-Client.configure(apiKey: "YOUR_API_KEY")
-Client.tagUser("user-123")
-Client.track(event: "checkout_started")
-```
+#### UIKit
 
 Install the built-in pulse overlay after your scene has a visible window:
 
@@ -134,33 +115,108 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 If you are installing from a view controller that is already attached to a window, use `Client.installPulseOverlay(on:)`.
 
-## Google Tag Manager
+### Identify Users and Track Events
 
-HTML-wrapper apps that load content in a `WKWebView` can forward Google Tag Manager events to Sideband through the `SidebandWebView` bridge.
+Use a stable host-app user identifier, then track the events Sideband should use for targeting:
 
-Add the bridge alongside the core SDK:
+```swift
+Client.tagUser("user-123")
+
+Client.track(
+	event: "session_started",
+	metadata: ["source": "home"]
+)
+```
+
+Metadata values are string key-value pairs. `tagUser` and `track` are fire-and-forget calls, so they do not require `Task {}` or `await`. Tagged user IDs may contain up to 256 characters. Longer IDs are rejected without changing the current in-memory or persisted identity or scheduling sync.
+
+Sideband retains the tagged user ID until you replace it or clear it on logout:
+
+```swift
+Client.untagUser()
+```
+
+### Control Pulse Presentation
+
+Use a delegate when you need to decide whether a pulse should appear now:
+
+```swift
+final class PulseGate: ClientDelegate {
+	@MainActor
+	func clientShouldPresentPulse(_ pulse: PendingPulse) async -> PulsePresentationDecision {
+		.showNow
+	}
+}
+```
+
+Configure Sideband with the delegate:
+
+```swift
+Client.configure(
+	apiKey: "YOUR_API_KEY",
+	delegate: PulseGate()
+)
+```
+
+Return `.showNow` to present immediately, `.notNow` to skip this opportunity, or `.never` to decline the pulse permanently.
+
+## WebView Integration
+
+Use the `SidebandWebView` bridge when your app loads product content in a `WKWebView`. The bridge exposes `window.Sideband` to the page while the API key, event delivery, and pulse UI remain native.
+
+### Add WebView Support
 
 - Swift Package Manager: add the `SidebandWebView` product to the app target.
 - CocoaPods: use `pod "Sideband/WebView"`, which includes the core SDK.
 
-### 1. Install The Bridge
+The bridge is not part of `Sideband.xcframework`. It ships as source on the same public release tag.
 
-Install the bridge after configuring Sideband and before the WebView's first `load`.
-Pulses continue to appear in the native overlay above the WebView.
+### Install the Bridge and Pulse Overlay
+
+Configure Sideband, install the bridge before the WebView's first `load`, and install the native pulse overlay:
 
 ```swift
 import Sideband
 import SidebandWebView
 
 Client.configure(apiKey: "YOUR_API_KEY")
-Client.installWebViewBridge(on: webView)
+try Client.installWebViewBridge(
+	on: webView,
+	allowedOrigins: ["https://app.example.com"]
+)
 Client.installPulseOverlay(on: viewController)
 ```
 
-### 2. Forward GTM Events
+At least one allowed origin is required. Each entry must be an exact `http` or `https` origin with a scheme and host, plus an optional port. Do not include wildcards, credentials, a non-root path, query, or fragment. Bridge messages are accepted only from the main frame when its native origin exactly matches one of these entries.
 
-In Google Tag Manager, create a Custom HTML tag triggered by All Custom Events,
-or only by the events Sideband should receive. Skip GTM's built-in `gtm.*` events.
+Pulses appear in the native overlay above the WebView.
+
+### Use the JavaScript API
+
+After the bridge is installed, code in the page can identify users and track events:
+
+```javascript
+window.Sideband.tagUser("user-123")
+window.Sideband.track("checkout_started", { plan: "pro" })
+```
+
+Clear the identity when the user logs out:
+
+```javascript
+window.Sideband.untagUser()
+```
+
+Metadata scalar values are converted to strings. Nested values are ignored.
+
+To customize the handler name, injected JavaScript, or payload parsing, copy `Sources/SidebandWebView/` into the host app and stop depending on the product or subspec.
+
+## Google Tag Manager
+
+Complete the WebView integration first. Google Tag Manager can then call the same `window.Sideband` API without requiring a new app release for each tracked event.
+
+### Forward Events
+
+In Google Tag Manager, create a Custom HTML tag triggered by All Custom Events, or only by the events Sideband should receive. Skip GTM's built-in `gtm.*` events.
 
 ```html
 <script>
@@ -172,7 +228,11 @@ or only by the events Sideband should receive. Skip GTM's built-in `gtm.*` event
 </script>
 ```
 
-To include event properties, create GTM Data Layer variables and pass them as the second argument. Metadata values are sent to Sideband as strings.
+`{{Event}}` is GTM's built-in Event variable.
+
+### Forward Event Metadata
+
+Create GTM Data Layer variables for the properties you want to send, then pass them as the second argument. Metadata scalar values are sent to Sideband as strings.
 
 ```html
 <script>
@@ -184,7 +244,9 @@ To include event properties, create GTM Data Layer variables and pass them as th
 </script>
 ```
 
-### 3. Tag The User
+`{{Value}}` is a Data Layer variable supplied by the host app.
+
+### Identify Users
 
 Create a Custom HTML tag that runs on login, or on container load when a stable user ID is available:
 
@@ -196,54 +258,4 @@ Create a Custom HTML tag that runs on login, or on container load when a stable 
 </script>
 ```
 
-On logout, call `Client.untagUser()` from native code or `window.Sideband.untagUser()` from a GTM tag.
-
-`{{Event}}` is GTM's built-in Event variable. `{{Value}}` and `{{User ID}}` are Data Layer variables supplied by the host app.
-
-## API Reference
-
-### Configure
-
-```swift
-Client.configure(apiKey: "YOUR_API_KEY")
-```
-
-```swift
-Client.configure(
-	configuration: Configuration(
-		apiKey: "YOUR_API_KEY",
-		appVersion: "1.0.0",
-		locale: "en_US"
-	)
-)
-```
-
-You can also manage a client instance yourself instead of using the shared client:
-
-```swift
-let client = Client(
-	configuration: Configuration(apiKey: "YOUR_API_KEY")
-)
-
-client.tagUser("user-123")
-client.track(event: "button_tapped")
-```
-
-### Tag A User
-
-```swift
-Client.tagUser("user-123")
-```
-
-Use a stable host-app user identifier. Calling this updates the current user context and schedules delivery in the background.
-
-### Track An Event
-
-```swift
-Client.track(
-	event: "button_tapped",
-	metadata: ["button": "subscribe"]
-)
-```
-
-Metadata values are string key-value pairs.
+`{{User ID}}` is a Data Layer variable supplied by the host app. On logout, call `Client.untagUser()` from native code or `window.Sideband.untagUser()` from a GTM tag.
