@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
 	s.platform = :ios, "15.0"
 	s.swift_versions = ["6.2"]
 	s.source = {
-		:git => "git@github.com:SidebandAI/sideband-ios.git",
+		:git => "https://github.com/SidebandAI/sideband-ios.git",
 		:tag => "1.3.0",
 	}
 	s.prepare_command = "unzip -q -o Sideband.xcframework.zip"
