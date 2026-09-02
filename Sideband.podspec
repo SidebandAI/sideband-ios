@@ -13,10 +13,8 @@ Pod::Spec.new do |s|
 	s.module_name = "SidebandWebView"
 	s.swift_versions = ["6.2"]
 	s.source = {
-		:git => "https://github.com/SidebandAI/sideband-ios.git",
-		:tag => "1.3.0",
+		:http => "https://github.com/SidebandAI/sideband-ios/releases/download/1.3.0/Sideband-CocoaPods-1.3.0.zip",
 	}
-	s.prepare_command = "unzip -q -o Sideband.xcframework.zip"
 	s.default_subspecs = "Core"
 	s.subspec "Core" do |core|
 		core.vendored_frameworks = "Sideband.xcframework"
