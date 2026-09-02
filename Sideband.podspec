@@ -4,9 +4,13 @@ Pod::Spec.new do |s|
 	s.summary = "Sideband iOS SDK"
 	s.description = "Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband."
 	s.homepage = "https://github.com/SidebandAI/sideband-ios"
-	s.license = { :type => "Proprietary" }
+	s.license = {
+		:type => "Proprietary",
+		:text => "Copyright SidebandAI. All rights reserved.",
+	}
 	s.author = { "SidebandAI" => "support@sideband.ai" }
 	s.platform = :ios, "15.0"
+	s.module_name = "SidebandWebView"
 	s.swift_versions = ["6.2"]
 	s.source = {
 		:git => "https://github.com/SidebandAI/sideband-ios.git",
