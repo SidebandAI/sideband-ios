@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
 	s.name = "Sideband"
-	s.version = "1.4.0-rc.1"
+	s.version = "1.4.0"
 	s.summary = "Sideband iOS SDK"
 	s.description = "Sideband helps iOS apps collect lightweight in-app feedback pulses and send product events to Sideband."
 	s.homepage = "https://github.com/SidebandAI/sideband-ios"
@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
 	s.module_name = "SidebandWebView"
 	s.swift_versions = ["6.2"]
 	s.source = {
-		:http => "https://github.com/SidebandAI/sideband-ios/releases/download/1.4.0-rc.1/Sideband-CocoaPods-1.4.0-rc.1.zip",
+		:http => "https://github.com/SidebandAI/sideband-ios/releases/download/1.4.0/Sideband-CocoaPods-1.4.0.zip",
 	}
 	s.default_subspecs = "Core"
 	s.subspec "Core" do |core|
