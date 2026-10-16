@@ -142,6 +142,23 @@ Sideband retains the tagged user ID until you replace it or clear it on logout:
 Client.untagUser()
 ```
 
+### Automatic Authentication Events
+
+Identity changes automatically queue timestamped events:
+
+| Transition | Events (in order) |
+| --- | --- |
+| Untagged → A | `system_login`, `metadata.user_id = A` |
+| A → untagged | `system_logout`, `metadata.user_id = A` |
+| A → B | `system_logout` for A, then `system_login` for B, with the same timestamp |
+| A → A or untagged → untagged | None |
+
+Restoring a saved identity does not emit a login event. Auth events use the host
+API call time and retain their IDs, timestamps, and metadata through batching and
+retries. Use `metadata.user_id` for auth-event attribution: batch-level context
+can already contain a newer identity or no identity. Do not manually duplicate
+these automatic events. Auth events do not depend on lifecycle tracking settings.
+
 ### Event Metadata and Pulse Targeting
 
 Pass metadata to `track` as string key-value pairs. Use metadata to describe an
